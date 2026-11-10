@@ -12,6 +12,7 @@ import {
   type FailureSignal,
 } from "@argent/registry";
 import { appendHintToMessage } from "./usbmux-protocol";
+import { isWirelessLink, recordDeviceLink, type DeviceLink } from "./network.argentw";
 import { assertXcodeFirstLaunchDone } from "../dependency-errors";
 
 /**
@@ -356,15 +357,18 @@ export async function launchApp(
   await runDevicectl(args, `launch ${bundleId}`, { bundleId });
 }
 
-interface DeviceConnectionInfo {
-  transportType: string | null;
-  tunnelState: string | null;
+type DeviceConnectionInfo = DeviceLink;
+
+interface DevicectlConnectionProperties {
+  transportType?: string;
+  tunnelState?: string;
+  tunnelIPAddress?: string;
 }
 
 interface DevicectlDetailsPayload {
   result?: {
-    connectionProperties?: { transportType?: string; tunnelState?: string };
-    device?: { connectionProperties?: { transportType?: string; tunnelState?: string } };
+    connectionProperties?: DevicectlConnectionProperties;
+    device?: { connectionProperties?: DevicectlConnectionProperties };
   };
 }
 
@@ -391,7 +395,15 @@ async function deviceInfoDetails(
   return {
     transportType: conn?.transportType ?? null,
     tunnelState: conn?.tunnelState ?? null,
+    tunnelIPAddress: conn?.tunnelIPAddress ?? null,
   };
+}
+
+/** argentw: read how CoreDevice reaches the device now, and remember it for runner commands. */
+export async function readDeviceLink(udid: string): Promise<DeviceLink> {
+  const link = await deviceInfoDetails(udid, { timeoutSeconds: 15 });
+  recordDeviceLink(udid, link);
+  return link;
 }
 
 const READY_MEMO_TTL_MS = 5_000;
@@ -409,7 +421,7 @@ function readyFailureSignal(error_kind: FailureKind): FailureSignal {
 }
 
 /**
- * Ensure the device is on USB and its CoreDevice tunnel is ready.
+ * Ensure the device is on USB, or on the network with its CoreDevice tunnel up (argentw).
  */
 export async function ensureDeviceReady(udid: string): Promise<void> {
   // Memoized for 5s. Callers hit this on the hot path.
@@ -419,14 +431,19 @@ export async function ensureDeviceReady(udid: string): Promise<void> {
     return;
   }
 
-  // An unplugged paired device can keep a network tunnel. usbmux still needs the cable.
-  const info = await deviceInfoDetails(udid, { timeoutSeconds: 15 });
+  // argentw: a phone on the network is driven through its CoreDevice tunnel.
+  const info = await readDeviceLink(udid);
 
   // Older toolchains omit transportType. Only an explicit non-wired value rejects.
-  if (info.transportType != null && info.transportType !== "wired") {
+  if (
+    info.transportType != null &&
+    info.transportType !== "wired" &&
+    !isWirelessLink(info) &&
+    info.tunnelState !== "connecting"
+  ) {
     throw withFailureSignal(
       new IosDeviceControlError(`Device transport is ${info.transportType}, not wired`, {
-        hint: "Connect the device by USB cable and unlock it, then retry.",
+        hint: "Connect the device by USB cable, or unlock it on the same network as this Mac, then retry.",
       }),
       readyFailureSignal("not_found")
     );

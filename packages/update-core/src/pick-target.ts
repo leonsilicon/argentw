@@ -1,8 +1,14 @@
 import semver from "semver";
 import type { VersionAt } from "./registry";
+import { isArgentwVersion } from "./argentw";
+
+// argentw: its releases are prereleases of upstream versions (0.32.0-argentw.3) and count as stable.
+function isPrerelease(version: string): boolean {
+  return semver.prerelease(version) !== null && !isArgentwVersion(version);
+}
 
 function isStableUpgrade(version: string, current: string | null): boolean {
-  if (!semver.valid(version) || semver.prerelease(version)) return false;
+  if (!semver.valid(version) || isPrerelease(version)) return false;
   if (current === null) return true;
   if (!semver.valid(current)) return false;
   return semver.gt(version, current);
@@ -36,7 +42,7 @@ export function pickInstallableTarget(
   let best: VersionAt | null = null;
   for (const [version, publishedAt] of Object.entries(times)) {
     // `times` also carries non-version keys ("created"/"modified").
-    if (!semver.valid(version) || semver.prerelease(version)) continue;
+    if (!semver.valid(version) || isPrerelease(version)) continue;
     if (current !== null && !semver.gt(version, current)) continue;
     if (!isOldEnough(publishedAt, minReleaseAgeMs)) continue;
     if (best === null || semver.gt(version, best.version)) {

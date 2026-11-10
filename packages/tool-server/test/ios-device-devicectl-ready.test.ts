@@ -28,10 +28,21 @@ vi.mock("node:child_process", async () => {
 // ensureDeviceReady memoizes readiness for 5s per udid, so each case needs its
 // own udid to actually run the probe.
 describe("ensureDeviceReady gates on the cable, not just the tunnel", () => {
-  it("rejects an unplugged device even while its tunnel reports connected", async () => {
+  it("argentw: accepts an unplugged device while its tunnel is connected", async () => {
     // Live-verified shape for a paired iPhone with the cable pulled: CoreDevice
-    // still reaches it, so only transportType tells the two apart.
-    fake.connectionProperties = { transportType: "localNetwork", tunnelState: "connected" };
+    // still reaches it, and argentw drives the runner through that tunnel.
+    fake.connectionProperties = {
+      transportType: "localNetwork",
+      tunnelState: "connected",
+      tunnelIPAddress: "fd7b:1a33:a0c6::1",
+    };
+
+    // Its own UDID: a success is memoized for 5s per device.
+    await expect(ensureDeviceReady("00008110-00000000000000AA")).resolves.toBeUndefined();
+  });
+
+  it("rejects an unplugged device whose tunnel is down", async () => {
+    fake.connectionProperties = { transportType: "localNetwork", tunnelState: "disconnected" };
 
     const error = await ensureDeviceReady("00008110-000000000000001E").catch(
       (caught: unknown) => caught
@@ -40,7 +51,7 @@ describe("ensureDeviceReady gates on the cable, not just the tunnel", () => {
     expect((error as Error).name).toBe("IosDeviceControlError");
     expect((error as Error).message).toBe(
       "Device transport is localNetwork, not wired. " +
-        "Hint: Connect the device by USB cable and unlock it, then retry."
+        "Hint: Connect the device by USB cable, or unlock it on the same network as this Mac, then retry."
     );
     // The verdict bypasses runDevicectl's stamp (devicectl itself succeeded),
     // so it carries its own: the registry must not file a pulled cable as

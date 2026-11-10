@@ -45,6 +45,7 @@ import { reportSkillRefresh } from "./skills.js";
 import { reportRetiredFiles } from "./retired-files.js";
 import { PACKAGE_NAME } from "./constants.js";
 import { resolveInstallableUpdateTarget } from "./update-target.js";
+import { argentwInstallSpec } from "@argent/update-core";
 import { writeCliRecord } from "./cli-record.js";
 import { killToolServer, killToolServerForInstallDir } from "@argent/tools-client";
 import { finalizeTelemetry } from "./telemetry-finalize.js";
@@ -376,10 +377,11 @@ export async function update(args: string[]): Promise<void> {
         p.log.warn(`Update available: ${pc.yellow(`v${installed}`)} -> ${pc.green(`v${target}`)}`);
       }
 
+      // argentw: the release tarball, never npm's upstream argent.
       const cmd =
         mode === "local"
-          ? localInstallCommand(pm, `${PACKAGE_NAME}@${target}`)
-          : globalInstallCommand(pm, `${PACKAGE_NAME}@${target}`);
+          ? localInstallCommand(pm, argentwInstallSpec(target))
+          : globalInstallCommand(pm, argentwInstallSpec(target));
       const cmdStr = formatShellCommand(cmd);
 
       if (!nonInteractive) {

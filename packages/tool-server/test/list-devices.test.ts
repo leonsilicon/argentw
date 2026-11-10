@@ -746,13 +746,14 @@ describe("list-devices", () => {
     }>;
     expect(physical.map((d) => [d.name, d.state])).toEqual([
       ["Desk iPhone", "connected"],
+      // argentw: reachable over the network, so usable without the cable.
+      ["Unplugged iPhone", "connected"],
       ["Office iPhone", "paired"],
-      ["Unplugged iPhone", "paired"],
     ]);
     // pairingState/tunnelState ride along so callers can see WHY a row is paired.
-    expect(physical[1]).toMatchObject({ pairingState: "paired", tunnelState: "disconnected" });
-    // The Wi-Fi-migrated tunnel reads "connected" yet usbmux cannot reach it.
-    expect(physical[2]).toMatchObject({ state: "paired", tunnelState: "connected" });
+    expect(physical[2]).toMatchObject({ pairingState: "paired", tunnelState: "disconnected" });
+    // argentw: the Wi-Fi-migrated tunnel reads "connected", and the runner is reached through it.
+    expect(physical[1]).toMatchObject({ state: "connected", tunnelState: "connected" });
     // The paired phone sinks below every usable device, booted simulators
     // included; flow auto-bind keys on state "connected" and skips it.
     expect(byName("Desk iPhone")).toBeLessThan(byName("Office iPhone"));

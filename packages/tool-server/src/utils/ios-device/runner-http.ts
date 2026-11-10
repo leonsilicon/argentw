@@ -2,6 +2,7 @@ import http from "node:http";
 import net from "node:net";
 import { requireTimeRemaining, type Deadline } from "./usbmux";
 import { IosDeviceTransportError } from "./usbmux-protocol";
+import { ARGENTW_TOKEN_HEADER, argentwToken } from "./network.argentw";
 
 /**
  * POST one command to the XCUITest runner over a pre-connected socket.
@@ -73,6 +74,8 @@ async function requestOverAgent(
             "Content-Type": "application/json",
             "Content-Length": payload.length,
             "Connection": "close",
+            // argentw: the runner refuses commands without this Mac's token.
+            [ARGENTW_TOKEN_HEADER]: argentwToken(),
           },
           agent,
           signal: timeoutSignal,

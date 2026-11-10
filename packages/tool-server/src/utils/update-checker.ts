@@ -4,13 +4,15 @@ import path from "node:path";
 import semver from "semver";
 import { version as currentVersion } from "../../package.json";
 import {
+  ARGENTW_REGISTRY_URL,
   detectMinReleaseAgeMs,
   fetchRegistryInfo,
   pickInstallableTarget,
 } from "@argent/update-core";
 
 const PACKAGE_NAME = "@swmansion/argent";
-const REGISTRY_URL = `https://registry.npmjs.org/${PACKAGE_NAME}`;
+// argentw: updates come from argentw's releases. npm would bring back upstream argent.
+const REGISTRY_URL = ARGENTW_REGISTRY_URL;
 const CHECK_INTERVAL_MS = 60 * 60 * 1000 * 24;
 
 function getSuppressionFilePath(): string {

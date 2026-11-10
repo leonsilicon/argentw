@@ -7,6 +7,7 @@ import * as path from "node:path";
 import { FAILURE_CODES, FailureError } from "@argent/registry";
 import { scheduleGroupSigkill, signalGroupThenPid } from "../process-kill";
 import { sleep } from "../timing";
+import { argentwRunnerEnvironment } from "./network.argentw";
 
 /**
  * Launch the built runner on a device, learn the port it bound, and kill it again.
@@ -81,6 +82,8 @@ export async function launchRunner(opts: {
     {
       detached: true,
       stdio: ["ignore", logFd, logFd],
+      // argentw: hands the runner this Mac's token, so it can listen beyond loopback.
+      env: argentwRunnerEnvironment(),
     }
   );
 

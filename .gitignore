@@ -79,3 +79,6 @@ packages/argent/src/tool-args.generated.ts
 
 # What agents receive, rendered for local review by `npm run render:agent-context`.
 packages/tool-server/agent-context/
+
+# argentw build output
+argentw/.build/

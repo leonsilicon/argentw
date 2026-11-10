@@ -1,9 +1,9 @@
 import {
+  ARGENTW_REGISTRY_URL,
   detectMinReleaseAgeMsForPm,
   fetchRegistryInfo,
   pickInstallableTarget,
 } from "@argent/update-core";
-import { NPM_REGISTRY, PACKAGE_NAME } from "./constants.js";
 import type { PackageManager } from "./utils.js";
 
 interface ResolvedUpdateTarget {
@@ -23,7 +23,8 @@ export async function resolveInstallableUpdateTarget(
   pm: PackageManager,
   current: string | null
 ): Promise<ResolvedUpdateTarget | null> {
-  const info = await fetchRegistryInfo(`${NPM_REGISTRY}/${PACKAGE_NAME}`);
+  // argentw: its own releases, not npm's upstream argent.
+  const info = await fetchRegistryInfo(ARGENTW_REGISTRY_URL);
   if (info === null) return null;
 
   const minReleaseAgeMs = await detectMinReleaseAgeMsForPm(pm);

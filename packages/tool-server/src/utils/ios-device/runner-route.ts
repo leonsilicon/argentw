@@ -1,6 +1,7 @@
 import { sleep } from "../timing";
 import { postRunnerCommand } from "./runner-http";
-import { createDeadline, openUsbmuxRunnerSocket, type Deadline } from "./usbmux";
+import { openRunnerSocket } from "./network.argentw";
+import { createDeadline, type Deadline } from "./usbmux";
 import { isIosDeviceTransportError } from "./usbmux-protocol";
 
 /**
@@ -86,7 +87,8 @@ function defaultSendViaUsbmux(
 ): Promise<unknown> {
   // One deadline covers the handshake and the HTTP exchange.
   return postRunnerCommand({
-    socketFactory: () => openUsbmuxRunnerSocket({ udid, port, timeoutMs: deadline.remainingMs() }),
+    // argentw: through the CoreDevice tunnel when the phone has no cable.
+    socketFactory: () => openRunnerSocket({ udid, port, timeoutMs: deadline.remainingMs() }),
     body,
     deadline,
   });

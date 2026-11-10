@@ -53,7 +53,10 @@ final class RunnerHTTPServer {
         // endpoint. The interface restriction admits either address family and
         // keeps port-0 auto-assignment and the .port readback working.
         let parameters = NWParameters.tcp
-        parameters.requiredInterfaceType = .loopback
+        // argentw: with a token, the CoreDevice tunnel can reach the listener too.
+        if !ArgentwNetwork.listensBeyondLoopback {
+            parameters.requiredInterfaceType = .loopback
+        }
         let listener: NWListener
 
         if port > 0, let nwPort = NWEndpoint.Port(rawValue: port) {
@@ -126,6 +129,11 @@ final class RunnerHTTPServer {
             }
 
             switch Self.requestVerdict(in: buffer) {
+            case .complete where !ArgentwNetwork.authorizes(buffer):
+                self.send(
+                    Reply(status: 401, body: ArgentwNetwork.unauthorizedBody()),
+                    over: connection
+                )
             case .complete(let body):
                 self.dispatch(body) { reply in
                     self.send(reply, over: connection)
