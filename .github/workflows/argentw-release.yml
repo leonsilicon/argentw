@@ -64,7 +64,9 @@ jobs:
       - name: Release
         if: steps.version.outputs.exists != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          # GitHub refuses GITHUB_TOKEN a tag on a commit that edits workflow files, which
+          # an upstream merge often does. improvebot's token has the `workflow` scope.
+          GH_TOKEN: ${{ secrets.ARGENTW_BOT_TOKEN || github.token }}
           VERSION: ${{ steps.version.outputs.version }}
           TARBALL: ${{ steps.build.outputs.tarball }}
         run: |
