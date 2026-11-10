@@ -13,8 +13,9 @@
 #
 # Secrets: ARGENTW_BOT_TOKEN (a classic PAT of the bot account improvebot, scopes `repo`
 # and `workflow`; improvebot is a write collaborator here. GITHUB_TOKEN can't push
-# upstream's workflow-file changes or trigger CI on the PR it opens), and
-# CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY.
+# upstream's workflow-file changes or trigger CI on the PR it opens). Only the push, PR
+# and workflow steps see it. And CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or
+# ANTHROPIC_API_KEY.
 name: argentw upstream sync
 
 on:
@@ -42,7 +43,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          token: ${{ secrets.ARGENTW_BOT_TOKEN }}
+          # The bot token goes only to the push and workflow steps. Upstream's code, its
+          # install scripts and Claude run here and must not find it in .git/config.
+          persist-credentials: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -135,7 +138,8 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.ARGENTW_BOT_TOKEN }}
+          # Read-only: Claude edits files, and the workflow commits and pushes them.
+          github_token: ${{ github.token }}
           prompt: Follow the instructions in argentw/MIGRATE.md.
           claude_args: >-
             --model claude-opus-5-5
@@ -186,7 +190,7 @@ jobs:
             echo "Nothing to propose."
             exit 0
           fi
-          git push origin "HEAD:$BRANCH"
+          git push "https://x-access-token:$GH_TOKEN@github.com/$GH_REPO.git" "HEAD:$BRANCH"
           {
             echo "Merges upstream argent [$TAG](https://github.com/software-mansion/argent/releases/tag/$TAG) into argentw."
             echo

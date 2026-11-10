@@ -11,7 +11,7 @@ const fake = vi.hoisted(() => ({
   link: {
     transportType: "localNetwork" as string | null,
     tunnelState: "connected" as string | null,
-    tunnelIPAddress: "::1" as string | null,
+    tunnelIPAddress: "127.0.0.1" as string | null,
   },
   usbmuxCalls: 0,
 }));
@@ -51,7 +51,11 @@ beforeAll(() => {
 
 afterEach(() => {
   fake.usbmuxCalls = 0;
-  fake.link = { transportType: "localNetwork", tunnelState: "connected", tunnelIPAddress: "::1" };
+  fake.link = {
+    transportType: "localNetwork",
+    tunnelState: "connected",
+    tunnelIPAddress: "127.0.0.1",
+  };
 });
 
 describe("isWirelessLink", () => {
@@ -99,7 +103,7 @@ describe("isReachableTransport", () => {
 describe("openRunnerSocket", () => {
   it("dials the tunnel address when the phone has no cable", async () => {
     const server = net.createServer((socket) => socket.end("pong"));
-    await new Promise<void>((resolve) => server.listen(0, "::1", resolve));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const port = (server.address() as net.AddressInfo).port;
 
     try {
@@ -130,7 +134,7 @@ describe("openRunnerSocket", () => {
     recordDeviceLink("SWITCHED-1", {
       transportType: "localNetwork",
       tunnelState: "connected",
-      tunnelIPAddress: "::1",
+      tunnelIPAddress: "127.0.0.1",
     });
     fake.link = { transportType: "wired", tunnelState: "connected", tunnelIPAddress: "fd00::1" };
 

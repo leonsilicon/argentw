@@ -14,7 +14,7 @@ The workflow gives the reason it called you in `ARGENTW_SYNC_REASON`:
 - If upstream renamed or moved a hooked function, put the hook in its new home, and update `argentw/check.sh` and the table in `argentw/PATCH.md` to match.
 - If upstream changed how the runner is reached (usbmux, the runner's HTTP server, how it's launched), or how updates are checked and installed, think about what argentw's patch has to do now, and make it work. Don't just make the text merge.
 - If upstream added its own wireless support, stop. Don't merge argentw's patch on top of it. Write in your report what upstream now does and how it differs from argentw.
-- Two upstream tests are deliberately changed (see `argentw/PATCH.md`). Keep their argentw expectations, and carry over any other changes upstream made to them.
+- Three upstream tests are deliberately changed (see `argentw/PATCH.md`). Keep their argentw expectations, and carry over any other changes upstream made to them.
 
 ## Before you finish
 

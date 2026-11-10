@@ -12,13 +12,14 @@ const { mockFetchRegistryInfo, mockDetectMinReleaseAgeMsForPm, mockPickInstallab
   }));
 
 vi.mock("@argent/update-core", () => ({
+  // argentw: updates come from argentw's registry.json, not npm.
+  ARGENTW_REGISTRY_URL: "https://argentw.test/registry.json",
   fetchRegistryInfo: mockFetchRegistryInfo,
   detectMinReleaseAgeMsForPm: mockDetectMinReleaseAgeMsForPm,
   pickInstallableTarget: mockPickInstallableTarget,
 }));
 
 import { resolveInstallableUpdateTarget } from "../src/update-target.js";
-import { NPM_REGISTRY, PACKAGE_NAME } from "../src/constants.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -40,7 +41,7 @@ describe("resolveInstallableUpdateTarget", () => {
 
     const result = await resolveInstallableUpdateTarget("npm", "1.0.0");
 
-    expect(mockFetchRegistryInfo).toHaveBeenCalledWith(`${NPM_REGISTRY}/${PACKAGE_NAME}`);
+    expect(mockFetchRegistryInfo).toHaveBeenCalledWith("https://argentw.test/registry.json");
     expect(mockDetectMinReleaseAgeMsForPm).toHaveBeenCalledWith("npm");
     expect(result).toEqual({
       latestVersion: "99.0.0",

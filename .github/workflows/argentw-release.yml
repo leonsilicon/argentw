@@ -20,8 +20,9 @@ concurrency:
   group: argentw-release
   cancel-in-progress: false
 
+# The write token goes only to the steps that publish. The build runs upstream's code
+# and install scripts, so it never sees one, and the checkout doesn't keep one.
 env:
-  GH_TOKEN: ${{ github.token }}
   GH_REPO: ${{ github.repository }}
 
 jobs:
@@ -32,9 +33,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Version
         id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           version=$(argentw/version.sh)
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -60,6 +64,7 @@ jobs:
       - name: Release
         if: steps.version.outputs.exists != 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
           TARBALL: ${{ steps.build.outputs.tarball }}
         run: |
@@ -78,6 +83,7 @@ jobs:
       - name: Record it in registry.json
         if: steps.version.outputs.exists != 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"
@@ -105,4 +111,4 @@ jobs:
           ' "$work/registry.json" "$VERSION"
           git -C "$work" add registry.json
           git -C "$work" commit -qm "argentw $VERSION"
-          git -C "$work" push origin registry
+          git -C "$work" push "https://x-access-token:$GH_TOKEN@github.com/$GH_REPO.git" registry

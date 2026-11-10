@@ -43,7 +43,7 @@ Each is a line or two, marked with an `argentw:` comment.
 | `skills/skills/argent-ios-device-setup/SKILL.md`             | the cable is optional after the first setup                                                                                                                |
 | `skills/rules/argent.md`                                     | the same, in the rule every agent loads                                                                                                                    |
 
-Two upstream tests changed to argentw's behavior: `tool-server/test/ios-device-devicectl-ready.test.ts` (a phone on the network is accepted) and `tool-server/test/list-devices.test.ts` (it lists as `connected`).
+Three upstream tests changed to argentw's behavior: `tool-server/test/ios-device-devicectl-ready.test.ts` (a phone on the network is accepted), `tool-server/test/list-devices.test.ts` (it lists as `connected`) and `argent-installer/test/update-target.test.ts` (updates resolve from argentw's registry).
 
 ## Packaging
 
