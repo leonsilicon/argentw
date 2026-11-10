@@ -1,0 +1,218 @@
+# Keeps argentw on upstream argent's newest release (https://github.com/software-mansion/argent):
+#  1. finds upstream's newest release tag vX.Y.Z that npm has published (argentw/build.sh
+#     builds over the published package) and that trunk doesn't contain yet;
+#  2. merges it into the `argentw/upstream-sync` branch;
+#  3. builds and tests it, and checks that argentw's hooks survived (argentw/check.sh);
+#  4. if the merge conflicted or the checks failed, Claude (Opus 5.5) brings argentw's
+#     patch onto the new upstream code, following argentw/MIGRATE.md;
+#  5. opens or updates a pull request into trunk, which argentw-ci.yml checks. Merge it
+#     with a merge commit, never a squash, or the next sync loses upstream's history.
+#     Merging releases it (argentw-release.yml).
+#
+# A run Claude doesn't finish still pushes what it did, and the next run continues it.
+#
+# Secrets: ARGENTW_BOT_TOKEN (a classic PAT of the bot account improvebot, scopes `repo`
+# and `workflow`; improvebot is a write collaborator here. GITHUB_TOKEN can't push
+# upstream's workflow-file changes or trigger CI on the PR it opens), and
+# CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY.
+name: argentw upstream sync
+
+on:
+  schedule:
+    - cron: "41 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: argentw-upstream-sync
+  cancel-in-progress: false
+
+env:
+  BRANCH: argentw/upstream-sync
+  # Adding the `upstream` remote would otherwise make gh act on upstream's repository.
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.ARGENTW_BOT_TOKEN }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Find upstream's newest release
+        id: upstream
+        run: |
+          git remote add upstream https://github.com/software-mansion/argent.git
+          git fetch --quiet --no-tags upstream '+refs/tags/v*:refs/tags/v*'
+          tag=""
+          for candidate in $(git tag -l 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$'); do
+            if npm view "@swmansion/argent@${candidate#v}" version >/dev/null 2>&1; then
+              tag=$candidate
+              break
+            fi
+          done
+          if [ -z "$tag" ]; then
+            echo "No published upstream release found." >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor "$tag" origin/trunk; then
+            echo "trunk already has upstream $tag."
+            echo "behind=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "behind=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge it
+        id: merge
+        if: steps.upstream.outputs.behind == 'true'
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+        run: |
+          git config user.name "argentw-bot"
+          git config user.email "argentw-bot@users.noreply.github.com"
+          # Continue an open sync PR's branch so commits pushed to it aren't lost.
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+            git fetch origin "$BRANCH"
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+            git merge --no-edit origin/trunk
+          else
+            git checkout -B "$BRANCH" origin/trunk
+          fi
+          if git merge-base --is-ancestor "$TAG" HEAD; then
+            echo "conflicts=false" >> "$GITHUB_OUTPUT"
+          elif git merge --no-ff --no-edit -m "Merge upstream argent $TAG" "$TAG"; then
+            echo "conflicts=false" >> "$GITHUB_OUTPUT"
+          else
+            # argentw deletes upstream's Dependabot config (its update PRs belong upstream),
+            # so an upstream edit to it is a modify/delete conflict that stays deleted.
+            git rm -q --ignore-unmatch .github/dependabot.yml
+            if [ -z "$(git diff --name-only --diff-filter=U)" ]; then
+              echo "conflicts=false" >> "$GITHUB_OUTPUT"
+            else
+              git diff --name-only --diff-filter=U
+              echo "conflicts=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Check the merge
+        id: precheck
+        if: steps.upstream.outputs.behind == 'true' && steps.merge.outputs.conflicts == 'false'
+        run: |
+          set -o pipefail
+          if {
+            npm ci &&
+              npm install @rollup/rollup-linux-x64-gnu --no-save &&
+              npm run build &&
+              npm test --workspaces --if-present &&
+              argentw/check.sh &&
+              argentw/build.sh
+          } 2>&1 | tee "$RUNNER_TEMP/argentw-precheck.log"; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Migrate with Claude
+        id: claude
+        if: steps.upstream.outputs.behind == 'true' && (steps.merge.outputs.conflicts == 'true' || steps.precheck.outputs.ok == 'false')
+        # Keep what Claude got done when it fails or runs out of time: the next run resumes it.
+        continue-on-error: true
+        timeout-minutes: 105
+        env:
+          ARGENTW_UPSTREAM_TAG: ${{ steps.upstream.outputs.tag }}
+          ARGENTW_SYNC_REASON: ${{ steps.merge.outputs.conflicts == 'true' && 'conflicts' || 'checks' }}
+        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.ARGENTW_BOT_TOKEN }}
+          prompt: Follow the instructions in argentw/MIGRATE.md.
+          claude_args: >-
+            --model claude-opus-5-5
+            --max-turns 300
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
+            --disallowedTools "Bash(git commit:*),Bash(git push:*),Bash(git checkout:*),Bash(git reset:*),Bash(git merge:*)"
+
+      - name: Final check
+        id: check
+        if: steps.upstream.outputs.behind == 'true'
+        run: |
+          set -o pipefail
+          # Conclude the merge (and record Claude's edits) before checking.
+          git add -A
+          if git rev-parse -q --verify MERGE_HEAD >/dev/null || ! git diff --cached --quiet; then
+            git commit -q --no-edit || git commit -q -m "Bring argentw onto upstream argent ${{ steps.upstream.outputs.tag }}"
+          fi
+          if git grep -nE '^(<<<<<<<|>>>>>>>) ' -- ':!*.md'; then
+            echo "Unresolved merge conflict markers." | tee "$RUNNER_TEMP/argentw-check.log"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if {
+            npm ci &&
+              npm install @rollup/rollup-linux-x64-gnu --no-save &&
+              npm run build &&
+              npm test --workspaces --if-present &&
+              argentw/check.sh &&
+              argentw/build.sh
+          } > "$RUNNER_TEMP/argentw-check.log" 2>&1; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+          tail -n 40 "$RUNNER_TEMP/argentw-check.log"
+
+      - name: Push and open the pull request
+        if: steps.upstream.outputs.behind == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.ARGENTW_BOT_TOKEN }}
+          TAG: ${{ steps.upstream.outputs.tag }}
+          CONFLICTS: ${{ steps.merge.outputs.conflicts }}
+          CHECK_OK: ${{ steps.check.outputs.ok }}
+          CLAUDE_RAN: ${{ steps.claude.outcome != 'skipped' && steps.claude.outcome != '' }}
+          CLAUDE_OUTCOME: ${{ steps.claude.outcome }}
+        run: |
+          if [ "$(git rev-list --count origin/trunk..HEAD)" = "0" ]; then
+            echo "Nothing to propose."
+            exit 0
+          fi
+          git push origin "HEAD:$BRANCH"
+          {
+            echo "Merges upstream argent [$TAG](https://github.com/software-mansion/argent/releases/tag/$TAG) into argentw."
+            echo
+            if [ "$CONFLICTS" = "true" ]; then echo "- The merge conflicted."; else echo "- The merge applied cleanly."; fi
+            if [ "$CLAUDE_RAN" = "true" ]; then echo "- Claude migrated argentw's patch (outcome: $CLAUDE_OUTCOME)."; fi
+            if [ "$CHECK_OK" = "true" ]; then
+              echo "- Build, tests, hook check (\`argentw/check.sh\`) and packaging pass."
+            else
+              echo "- **Checks failed.** The next scheduled run continues from this branch."
+            fi
+            echo
+            echo "Merge with a merge commit, not a squash. Merging releases it."
+            if [ -f "$RUNNER_TEMP/argentw-report.md" ]; then printf '\n## Claude'"'"'s report\n\n'; cat "$RUNNER_TEMP/argentw-report.md"; fi
+            if [ "$CHECK_OK" != "true" ]; then printf '\n## Check output\n\n```\n'; tail -n 60 "$RUNNER_TEMP/argentw-check.log"; printf '```\n'; fi
+          } > "$RUNNER_TEMP/body.md"
+          if gh pr view "$BRANCH" --json state -q .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$BRANCH" --title "Sync with upstream argent $TAG" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr create --base trunk --head "$BRANCH" --title "Sync with upstream argent $TAG" --body-file "$RUNNER_TEMP/body.md"
+          fi
+
+      # Upstream's own workflows (npm publishing, self-hosted e2e runs) must never run here.
+      - name: Disable upstream workflows
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.ARGENTW_BOT_TOKEN }}
+        run: |
+          gh workflow list --all --json id,path,state -q '.[] | select(.state == "active" and (.path | startswith(".github/workflows/argentw-") | not)) | .id' |
+            while read -r id; do gh workflow disable "$id"; done

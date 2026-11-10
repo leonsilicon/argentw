@@ -15,5 +15,6 @@ export {
   ARGENTW_REGISTRY_URL,
   ARGENTW_REPOSITORY,
   argentwInstallSpec,
+  argentwTarballUrl,
   isArgentwVersion,
 } from "./argentw";

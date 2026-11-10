@@ -29,10 +29,23 @@ npm pack "@swmansion/argent@$upstream" --pack-destination "$work" --silent >/dev
 tar -xzf "$work/swmansion-argent-$upstream.tgz" -C "$work"
 published="$work/package"
 
-# 2. The private assets upstream's bundler requires.
-mkdir -p packages/native-devtools-android/assets
-rm -rf packages/native-devtools-android/assets/trace-processor
-cp -R "$published/assets/trace-processor" packages/native-devtools-android/assets/trace-processor
+# 2. The private binaries and assets, where upstream's download scripts would put them
+# (all gitignored), so its bundler runs to the end exactly as in its own release.
+seed() { # <from, inside the published package> <to, inside the workspace>
+  rm -rf "$2"
+  mkdir -p "$(dirname "$2")"
+  cp -R "$published/$1" "$2"
+}
+seed bin packages/native-devtools-ios/bin
+rm -f packages/native-devtools-ios/bin/argent-simulator-server.cjs packages/native-devtools-ios/bin/*.apk
+rm -rf packages/native-devtools-ios/bin/network-inspector
+seed dylibs packages/native-devtools-ios/dylibs
+seed assets/trace-processor packages/native-devtools-android/assets/trace-processor
+mkdir -p packages/native-devtools-android/bin
+for apk in "$published"/bin/argent-android-devtools-*.apk; do
+  cp "$apk" packages/native-devtools-android/bin/
+done
+seed bin/network-inspector packages/native-devtools-android/bin/network-inspector
 
 # 3. Upstream's build, with the argentw version stamped where the code reads it (the
 # tool-server compares it against argentw's releases). Restored afterwards.
@@ -78,6 +91,7 @@ node -e '
   fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
 ' "$published/package.json" "$version"
 
-(cd "$work" && npm pack ./package --silent >/dev/null)
+# The published package.json keeps upstream's prepack script, whose script isn't shipped.
+(cd "$work" && npm pack ./package --ignore-scripts --silent >/dev/null)
 mv "$work/swmansion-argent-$version.tgz" "$work/argentw-$version.tgz"
 echo "$work/argentw-$version.tgz"

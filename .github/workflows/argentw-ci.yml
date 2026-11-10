@@ -1,0 +1,74 @@
+# argentw's checks: upstream's build and tests with argentw's patch in, a package built
+# over the published upstream release, and the on-device runner compiled for iOS.
+# Upstream's own workflows are disabled in this repository (see argentw-upstream-sync.yml).
+name: argentw CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - trunk
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: argentw-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build, test and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # argentw/version.sh counts commits since upstream's release tag.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: |
+          npm ci
+          # Same as upstream's unit-tests.yml: npm drops the optional native rollup binary.
+          npm install @rollup/rollup-linux-x64-gnu --no-save
+
+      - name: No conflict markers
+        run: |
+          if git grep -nE '^(<<<<<<<|>>>>>>>) ' -- ':!*.md'; then
+            echo "Unresolved merge conflict markers." >&2
+            exit 1
+          fi
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test --workspaces --if-present
+
+      - name: Package
+        run: argentw/build.sh
+
+  runner:
+    name: Compile the on-device runner
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Show the selected Xcode
+        run: xcodebuild -version
+
+      - name: Build for testing (generic iOS, unsigned)
+        run: >-
+          xcodebuild build-for-testing
+          -project packages/ios-device-runner/ArgentRunner/ArgentRunner.xcodeproj
+          -scheme ArgentRunner -destination generic/platform=iOS
+          CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY=
+          -derivedDataPath "$RUNNER_TEMP/argent-runner-dd" -quiet

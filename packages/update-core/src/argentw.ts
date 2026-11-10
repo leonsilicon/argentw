@@ -26,7 +26,16 @@ export function isArgentwVersion(version: string): boolean {
   return pre !== null && pre[0] === "argentw";
 }
 
-/** The install spec for an argentw version: its release tarball. */
-export function argentwInstallSpec(version: string): string {
+/** An argentw release's tarball. */
+export function argentwTarballUrl(version: string): string {
   return `https://github.com/${ARGENTW_REPOSITORY}/releases/download/v${version}/argentw-${version}.tgz`;
+}
+
+/**
+ * The install spec for an argentw version: its release tarball under the package's own
+ * name. npm, pnpm, yarn, bun and Vite+ (`vp install -g`) all take `name@url`; Vite+
+ * rejects a bare URL.
+ */
+export function argentwInstallSpec(version: string): string {
+  return `@swmansion/argent@${argentwTarballUrl(version)}`;
 }

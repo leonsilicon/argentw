@@ -1,0 +1,108 @@
+# Publishes every trunk commit as an argentw release: its package tarball on a GitHub
+# release `v<version>`, and the version in registry.json on the `registry` branch, which
+# argent's update check reads (see packages/update-core/src/argentw.ts). Install one with
+# argentw/install.sh.
+name: argentw release
+
+on:
+  push:
+    branches:
+      - trunk
+    paths-ignore:
+      - ".github/README.md"
+      - "argentw/*.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: argentw-release
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Version
+        id: version
+        run: |
+          version=$(argentw/version.sh)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "v$version is already released."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.version.outputs.exists != 'true'
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Build
+        if: steps.version.outputs.exists != 'true'
+        id: build
+        run: |
+          npm ci
+          npm install @rollup/rollup-linux-x64-gnu --no-save
+          echo "tarball=$(argentw/build.sh "${{ steps.version.outputs.version }}" | tail -n 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Release
+        if: steps.version.outputs.exists != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TARBALL: ${{ steps.build.outputs.tarball }}
+        run: |
+          upstream=${VERSION%%-argentw.*}
+          {
+            echo "argent $upstream (software-mansion/argent) with argentw's wireless iPhone patch, at ${GITHUB_SHA:0:10}."
+            echo
+            echo 'Install or update: `argentw/install.sh '"$VERSION"'` from a checkout, or'
+            echo
+            echo '```sh'
+            echo "cd ~ && vp install -g \"@swmansion/argent@https://github.com/$GH_REPO/releases/download/v$VERSION/argentw-$VERSION.tgz\" && argent init -y"
+            echo '```'
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" "$TARBALL" --target "$GITHUB_SHA" --title "argentw $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+
+      - name: Record it in registry.json
+        if: steps.version.outputs.exists != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          work="$RUNNER_TEMP/registry"
+          if git ls-remote --exit-code --heads origin registry >/dev/null; then
+            git fetch origin registry
+            git worktree add "$work" origin/registry
+            git -C "$work" checkout -B registry
+          else
+            git worktree add --detach "$work"
+            git -C "$work" checkout --orphan registry
+            git -C "$work" rm -rfq .
+          fi
+          # npm packument shape: argent's update check reads dist-tags.latest and time.
+          node -e '
+            const fs = require("node:fs");
+            const [file, version] = process.argv.slice(1);
+            let doc = { name: "@swmansion/argent", "dist-tags": {}, time: {} };
+            try { doc = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}
+            doc["dist-tags"].latest = version;
+            doc.time[version] = new Date().toISOString();
+            doc.time.modified = doc.time[version];
+            fs.writeFileSync(file, JSON.stringify(doc, null, 2) + "\n");
+          ' "$work/registry.json" "$VERSION"
+          git -C "$work" add registry.json
+          git -C "$work" commit -qm "argentw $VERSION"
+          git -C "$work" push origin registry
