@@ -190,6 +190,10 @@ jobs:
             echo "Nothing to propose."
             exit 0
           fi
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Set the ARGENTW_BOT_TOKEN secret (see the top of this file) so the sync can push and open its pull request."
+            exit 1
+          fi
           git push "https://x-access-token:$GH_TOKEN@github.com/$GH_REPO.git" "HEAD:$BRANCH"
           {
             echo "Merges upstream argent [$TAG](https://github.com/software-mansion/argent/releases/tag/$TAG) into argentw."
@@ -218,5 +222,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.ARGENTW_BOT_TOKEN }}
         run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::ARGENTW_BOT_TOKEN isn't set, so upstream's workflows weren't checked."
+            exit 0
+          fi
           gh workflow list --all --json id,path,state -q '.[] | select(.state == "active" and (.path | startswith(".github/workflows/argentw-") | not)) | .id' |
             while read -r id; do gh workflow disable "$id"; done
