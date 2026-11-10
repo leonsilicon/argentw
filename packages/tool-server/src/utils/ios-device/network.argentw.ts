@@ -61,6 +61,24 @@ export function isReachableTransport(
 }
 
 /**
+ * Whether runner commands go through the tunnel: always when the phone has no cable.
+ * With ARGENTW_TRANSPORT=tunnel in the tool-server's environment, a cabled phone's
+ * commands go through the tunnel too (CoreDevice runs the same tunnel over USB), which
+ * tests the wireless path without a network the phone and Mac share.
+ */
+function usesTunnel(link: DeviceLink): boolean {
+  if (isWirelessLink(link)) {
+    return true;
+  }
+
+  return (
+    process.env.ARGENTW_TRANSPORT === "tunnel" &&
+    link.tunnelState === "connected" &&
+    link.tunnelIPAddress != null
+  );
+}
+
+/**
  * Open a paused socket to the runner's port, through the tunnel when the phone
  * has no cable and through usbmux when it does.
  */
@@ -80,7 +98,7 @@ export async function openRunnerSocket(options: {
     link = await readDeviceLink(options.udid);
   }
 
-  if (!isWirelessLink(link)) {
+  if (!usesTunnel(link)) {
     return openUsbmuxRunnerSocket({ ...options, timeoutMs: remainingMs() });
   }
 
@@ -91,7 +109,7 @@ export async function openRunnerSocket(options: {
     // again and follow it once.
     const fresh = await readDeviceLink(options.udid);
 
-    if (!isWirelessLink(fresh)) {
+    if (!usesTunnel(fresh)) {
       return openUsbmuxRunnerSocket({ ...options, timeoutMs: remainingMs() });
     }
 

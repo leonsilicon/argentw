@@ -145,6 +145,23 @@ describe("openRunnerSocket", () => {
     expect(fake.usbmuxCalls).toBe(1);
   });
 
+  it("tunnels a cabled phone too with ARGENTW_TRANSPORT=tunnel", async () => {
+    fake.link = { transportType: "wired", tunnelState: "connected", tunnelIPAddress: "127.0.0.1" };
+    const server = net.createServer((socket) => socket.end());
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as net.AddressInfo).port;
+    process.env.ARGENTW_TRANSPORT = "tunnel";
+
+    try {
+      const socket = await openRunnerSocket({ udid: "WIRED-TUNNEL-1", port, timeoutMs: 2_000 });
+      socket.destroy();
+      expect(fake.usbmuxCalls).toBe(0);
+    } finally {
+      delete process.env.ARGENTW_TRANSPORT;
+      server.close();
+    }
+  });
+
   it("reports a closed runner port as retryable", async () => {
     await expect(
       openRunnerSocket({ udid: "WIRELESS-2", port: 1, timeoutMs: 500 })

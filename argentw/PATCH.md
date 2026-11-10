@@ -10,7 +10,7 @@ When a paired iPhone is unlocked on the same network as the Mac, CoreDevice stil
 
 The runner then has to accept connections that don't arrive on loopback. Each Mac has a token: 32 random bytes in `~/.argent/argentw-token`, mode 0600. The tool-server passes it to the runner as `TEST_RUNNER_ARGENTW_TOKEN`, and xcodebuild forwards it without the prefix. With a token, the runner listens on every interface, and it answers 401 to any request whose `X-Argentw-Token` header doesn't match. That covers its port on the Wi-Fi interface too. The host only ever sends the token through the tunnel or the cable. Without a token, the runner behaves exactly like upstream's.
 
-A cabled phone keeps upstream's usbmux path.
+A cabled phone keeps upstream's usbmux path. To test the tunnel path without a network the phone and Mac share, start the tool-server with `ARGENTW_TRANSPORT=tunnel`: a cabled phone's commands then go through the tunnel too, because CoreDevice runs the same tunnel over USB.
 
 ## New files
 
